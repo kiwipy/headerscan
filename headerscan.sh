@@ -6,11 +6,41 @@
 # Website:     https://github.com/william-andersson
 # License:     GPL
 #
-VERSION=0.3.0
+VERSION=0.5.0
 
-echo -e "\n--------------- HeaderScan v$VERSION ---------------"
+if [ -z "$1" ];then
+    echo "No input file provided!"
+    exit 1
+fi
+
 OUT="$(mktemp /tmp/ipinfo.XXXX)"
 PARSED="$(mktemp /tmp/head-scan.XXXX)"
+BASE64="$(mktemp /tmp/base64.XXX)"
+ASCII="$(mktemp /tmp/base64.XXX)"
+
+view_base64(){
+    for line in $(cat $1 | sed -n '/Content-Transfer-Encoding: base64/,$p');do
+        if [[ "$line" == *"--"* ]];then
+            SKIP="1"
+        elif [[ "$line" == *"base64"* ]];then
+            SKIP="0"
+        fi
+        if [ "$SKIP" != "1" ] && [ "$line" != "Content-Transfer-Encoding:" ];then
+            if [[ "$line" != *"base64"* ]];then
+                echo $line >> $BASE64
+            else
+                echo "" >> $BASE64
+            fi
+        fi
+    done
+
+    base64 -w0 -d $BASE64 > $ASCII
+    if [ -s $ASCII ];then
+        nano $ASCII
+    else
+        echo "No embedded base64 encodings."
+    fi
+}
 
 parse_input_file(){
     # Update keyword_list
@@ -28,6 +58,7 @@ parse_input_file(){
     done
 
     # Parse to file
+    echo "----- Parse file for HeaderScan v$VERSION -----" >> $PARSED
     for i in $(cat $1);do
         y="0"
         for x in $(cat /usr/local/share/headerscan/keyword_list);do
@@ -40,7 +71,7 @@ parse_input_file(){
             echo -en "\n\n$i " >> $PARSED
         elif [ "$STOP" == "1" ];then
             echo -n "$i " >> $PARSED
-            echo -e "\n\n----- Email content below, not included in parsed file -----" >> $PARSED
+            echo -e "\n\n----- Email content below, not included in parse file -----" >> $PARSED
             break
         elif [ "$y" == "1" ];then
             echo -en "\n\n$i " >> $PARSED
@@ -63,12 +94,12 @@ get_ip_info(){
 
     if [ "$2" == "red" ];then
         if [ "$BOGON" == "true" ];then
-            echo -e "\e[1;33m  |    IP: Bogon address reserved for special use.\033[0m"
+            echo -e "\e[1;33m  |                  IP: Bogon address reserved for special use.\033[0m"
         else
-            echo -e "\033[31m  |    IP: $IP\n  |    Location: $CITY, $COUNTRY\n  |    Timezone: $TIME\n  |    Provider: $PROVIDER\033[0m"
+            echo -e "\033[31m  |                  IP: $IP\n  |                  Location: $CITY, $COUNTRY\n  |                  Timezone: $TIME\n  |                  Provider: $PROVIDER\033[0m"
         fi
     else
-        echo -e "  |    Location: $CITY, $COUNTRY\n  |    Timezone: $TIME\n  |    Provider: $PROVIDER"
+        echo -e "  |                  Location: $CITY, $COUNTRY\n  |                  Timezone: $TIME\n  |                  Provider: $PROVIDER"
     fi
 }
 
@@ -124,35 +155,42 @@ echo -e "  Received-SPF: \e[1;34m$SPF_DOM\033[0m ($SPF_IP)"
 
 # Print all Received: fields
 echo -e "\n[Email path through network]"
-echo "  |--(Receiver)"
+echo "  |-(Receiver)"
 for i in $(cat $PARSED | awk '/Received: from/ {print $3}' | sed 's/\[//g' | sed 's/\]//g');do
     # If $i is a IP, print waring and look-up
     if [[ $i =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo -e "\e[1;31m  |  Received: Source without URL --> $i\033[0m"
+        echo -e "\e[1;31m  |  Received: From: Source without URL --> $i\033[0m"
         get_ip_info $i red
     else
         # Print ip after every host if exists
         HOST_IP=$(host $i | awk 'NR==1{print $4}')
         if [ "$HOST_IP" == "$SPF_IP" ];then
-            echo -e "  |  Received: \e[1;34m$i\033[0m $(host $i | awk 'NR==1{print $3, $4}')"
+            echo -e "  |  Received: From: \e[1;34m$i\033[0m $(host $i | awk 'NR==1{print $3, $4}')"
+            echo "  |              By: $(cat $PARSED | awk '/Received: from '$i'/ {print $6}')"
         else
-            echo "  |  Received: $i $(host $i | awk 'NR==1{print $3, $4}')"
+            echo "  |  Received: From: $i $(host $i | awk 'NR==1{print $3, $4}')"
+            echo "  |              By: $(cat $PARSED | awk '/Received: from '$i'/ {print $6}')"
         fi
         if [ "$HOST_IP" != "found:" ];then
             get_ip_info $HOST_IP
         fi
     fi
 done
-echo "  |--(Sender)"
+echo "  |-(Sender)"
 
 echo ""
-read -e -p "Save parsed file to: " DEST
+read -e -p "Save parsed file to path (return to skip): " DEST
 if [ ! -z $DEST ];then
     if [ -d $DEST ];then
-        cp $PARSED ${DEST%/}/header-$(date +%d-%m-%Y_%H:%M)
+        NAME="$(cat $PARSED | awk '/^From: / {print $NF}' | cut -d "@" -f2 | cut -d "." -f1)"
+        cp $PARSED ${DEST%/}/headerscan-$NAME-$(date +%H%M%S)
     else
         echo "No such directory!"
     fi
 fi
-rm $OUT
-rm $PARSED
+
+read -p "Scan for and view base64 encodings [y/n]?: " BASE
+if [ "$BASE" == "Y" ] || [ "$BASE" == "y" ];then
+    view_base64 $1
+fi
+rm $OUT $PARSED $BASE64 $ASCII
