@@ -119,7 +119,11 @@ echo "  DMARC: $(cat $PARSED | grep -o '[^ ]*dmarc=[^ ]*' | cut -d ";" -f2 | cut
 # Print helo strings
 echo -e "\n[HELO strings]"
 for helo in $(cat $PARSED | grep -o '[^ ]*helo=[^ ]*' | cut -d "=" -f2 | sed 's/.\{1\}$//');do
-    echo "  HELO: $helo"
+    if [[ $helo != *"."* ]];then
+        echo -e "  HELO: \033[31m$helo\033[0m"
+    else
+        echo "  HELO: $helo"
+    fi
 done
 
 # Print Received-SPF info
