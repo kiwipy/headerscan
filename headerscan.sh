@@ -6,34 +6,11 @@
 # Website:     https://github.com/william-andersson
 # License:     GPL
 #
-VERSION=0.2.0
+VERSION=0.3.0
 
 echo -e "\n--------------- HeaderScan v$VERSION ---------------"
 OUT="$(mktemp /tmp/ipinfo.XXXX)"
 PARSED="$(mktemp /tmp/head-scan.XXXX)"
-
-wait_graphics(){
-    graphics=(
-        "( ●    )"
-        "(  ●   )"
-        "(   ●  )"
-        "(    ● )"
-        "(     ●)"
-        "(    ● )"
-        "(   ●  )"
-        "(  ●   )"
-        "( ●    )"
-        "(●     )"
-    )
-    i=0
-    while kill -0 $pid 2>/dev/null;
-    do
-        i=$(( (i+1) %10 ))
-        echo -ne "\r${graphics[$i]}"
-        sleep .1
-    done
-    echo -ne "\r"
-}
 
 parse_input_file(){
     # Update keyword_list
@@ -86,7 +63,7 @@ get_ip_info(){
 
     if [ "$2" == "red" ];then
         if [ "$BOGON" == "true" ];then
-            echo -e "\033[33m  |    IP: Bogon address reserved for special use.\033[0m"
+            echo -e "\e[1;33m  |    IP: Bogon address reserved for special use.\033[0m"
         else
             echo -e "\033[31m  |    IP: $IP\n  |    Location: $CITY, $COUNTRY\n  |    Timezone: $TIME\n  |    Provider: $PROVIDER\033[0m"
         fi
@@ -95,9 +72,7 @@ get_ip_info(){
     fi
 }
 
-parse_input_file $1 &
-pid=$!
-wait_graphics
+parse_input_file $1
 
 # Print email main info
 echo "[General info]"
@@ -112,17 +87,32 @@ echo "  $(cat $PARSED | awk '/^Message-ID: /')"
 
 # Print Authentication-Results
 echo -e "\n[Authentication]"
-echo "  SPF: $(cat $PARSED | grep -o '[^ ]*spf=[^ ]*' | cut -d "=" -f2)"
-echo "  DKIM: $(cat $PARSED | grep -o '[^ ]*dkim=[^ ]*' | cut -d "=" -f2)"
-echo "  DMARC: $(cat $PARSED | grep -o '[^ ]*dmarc=[^ ]*' | cut -d ";" -f2 | cut -d "=" -f2)"
+SPF="$(cat $PARSED | grep -o '[^ ]*spf=[^ ]*' | cut -d "=" -f2)"
+DKIM="$(cat $PARSED | grep -o '[^ ]*dkim=[^ ]*' | cut -d "=" -f2)"
+DMARC="$(cat $PARSED | grep -o '[^ ]*dmarc=[^ ]*' | cut -d ";" -f2 | cut -d "=" -f2)"
+if [ "$SPF" != "pass" ];then
+    echo -e "  SPF: \e[1;31m$SPF\033[0m"
+else
+    echo "  SPF: $SPF"
+fi
+if [ "$DKIM" != "pass" ];then
+    echo -e "  DKIM: \e[1;31m$DKIM\033[0m"
+else
+    echo "  DKIM: $DKIM"
+fi
+if [ "$DMARC" != "pass" ];then
+    echo -e "  DMARC: \e[1;31m$DMARC\033[0m"
+else
+    echo "  DMARC: $DMARC"
+fi
 
 # Print helo strings
 echo -e "\n[HELO strings]"
 for helo in $(cat $PARSED | grep -o '[^ ]*helo=[^ ]*' | cut -d "=" -f2 | sed 's/.\{1\}$//');do
     if [[ $helo != *"."* ]];then
-        echo -e "  HELO: \033[31m$helo\033[0m"
+        echo -e "  HELO: \e[1;31m$helo\033[0m"
     else
-        echo "  HELO: $helo"
+        echo -e "  HELO: \e[1;34m$helo\033[0m"
     fi
 done
 
@@ -130,7 +120,7 @@ done
 echo -e "\n[Received-SPF]"
 SPF_DOM=$(cat $PARSED | awk '/^Received-SPF: / {print $6}')
 SPF_IP=$(cat $PARSED | awk '/^Received-SPF: / {print $8}')
-echo -e "  Received-SPF: \033[34m$SPF_DOM\033[0m ($SPF_IP)"
+echo -e "  Received-SPF: \e[1;34m$SPF_DOM\033[0m ($SPF_IP)"
 
 # Print all Received: fields
 echo -e "\n[Email path through network]"
@@ -138,13 +128,13 @@ echo "  |--(Receiver)"
 for i in $(cat $PARSED | awk '/Received: from/ {print $3}' | sed 's/\[//g' | sed 's/\]//g');do
     # If $i is a IP, print waring and look-up
     if [[ $i =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo -e "\033[31m  |  Received: Source without URL --> $i\033[0m"
+        echo -e "\e[1;31m  |  Received: Source without URL --> $i\033[0m"
         get_ip_info $i red
     else
         # Print ip after every host if exists
         HOST_IP=$(host $i | awk 'NR==1{print $4}')
         if [ "$HOST_IP" == "$SPF_IP" ];then
-            echo -e "  |  Received: \033[34m$i\033[0m $(host $i | awk 'NR==1{print $3, $4}')"
+            echo -e "  |  Received: \e[1;34m$i\033[0m $(host $i | awk 'NR==1{print $3, $4}')"
         else
             echo "  |  Received: $i $(host $i | awk 'NR==1{print $3, $4}')"
         fi
