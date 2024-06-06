@@ -6,7 +6,7 @@
 # Website:     https://github.com/william-andersson
 # License:     GPL
 #
-VERSION=0.5.0
+VERSION=0.7.0
 
 if [ -z "$1" ];then
     echo "No input file provided!"
@@ -14,11 +14,14 @@ if [ -z "$1" ];then
 fi
 
 OUT="$(mktemp /tmp/ipinfo.XXXX)"
-PARSED="$(mktemp /tmp/head-scan.XXXX)"
+PARSED="$(mktemp /tmp/headerscan.XXXX)"
 BASE64="$(mktemp /tmp/base64.XXX)"
-ASCII="$(mktemp /tmp/base64.XXX)"
+ASCII="$(mktemp /tmp/ascii.XXX)"
+MARKS_LOG="$(mktemp /tmp/marks.XXX)"
+MARKS=0
+AVAIL_MARKS=7
 
-view_base64(){
+decode_base64(){
     for line in $(cat $1 | sed -n '/Content-Transfer-Encoding: base64/,$p');do
         if [[ "$line" == *"--"* ]];then
             SKIP="1"
@@ -35,11 +38,6 @@ view_base64(){
     done
 
     base64 -w0 -d $BASE64 > $ASCII
-    if [ -s $ASCII ];then
-        nano $ASCII
-    else
-        echo "No embedded base64 encodings."
-    fi
 }
 
 parse_input_file(){
@@ -123,16 +121,22 @@ DKIM="$(cat $PARSED | grep -o '[^ ]*dkim=[^ ]*' | cut -d "=" -f2)"
 DMARC="$(cat $PARSED | grep -o '[^ ]*dmarc=[^ ]*' | cut -d ";" -f2 | cut -d "=" -f2)"
 if [ "$SPF" != "pass" ];then
     echo -e "  SPF: \e[1;31m$SPF\033[0m"
+    MARKS=$((MARKS+1))
+    echo "  - SPF not passed." >> $MARKS_LOG
 else
     echo "  SPF: $SPF"
 fi
 if [ "$DKIM" != "pass" ];then
     echo -e "  DKIM: \e[1;31m$DKIM\033[0m"
+    MARKS=$((MARKS+1))
+    echo "  - DKIM not passed." >> $MARKS_LOG
 else
     echo "  DKIM: $DKIM"
 fi
 if [ "$DMARC" != "pass" ];then
     echo -e "  DMARC: \e[1;31m$DMARC\033[0m"
+    MARKS=$((MARKS+1))
+    echo "  - DMARC not passed." >> $MARKS_LOG
 else
     echo "  DMARC: $DMARC"
 fi
@@ -142,15 +146,19 @@ echo -e "\n[HELO strings]"
 for helo in $(cat $PARSED | grep -o '[^ ]*helo=[^ ]*' | cut -d "=" -f2 | sed 's/.\{1\}$//');do
     if [[ $helo != *"."* ]];then
         echo -e "  HELO: \e[1;31m$helo\033[0m"
+        MARKS=$((MARKS+1))
+        echo "  - HELO string without domain." >> $MARKS_LOG
     else
         echo -e "  HELO: \e[1;34m$helo\033[0m"
     fi
+    HELO="${HELO} $helo"
 done
 
 # Print Received-SPF info
 echo -e "\n[Received-SPF]"
 SPF_DOM=$(cat $PARSED | awk '/^Received-SPF: / {print $6}')
 SPF_IP=$(cat $PARSED | awk '/^Received-SPF: / {print $8}')
+SPF_SHORT_DOM="$(echo $SPF_DOM | rev | cut -d "." -f-2 | rev)"
 echo -e "  Received-SPF: \e[1;34m$SPF_DOM\033[0m ($SPF_IP)"
 
 # Print all Received: fields
@@ -160,12 +168,30 @@ for i in $(cat $PARSED | awk '/Received: from/ {print $3}' | sed 's/\[//g' | sed
     # If $i is a IP, print waring and look-up
     if [[ $i =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         echo -e "\e[1;31m  |  Received: From: Source without URL --> $i\033[0m"
+        MARKS=$((MARKS+1))
+        echo "  - Received from without domain name." >> $MARKS_LOG
         get_ip_info $i red
+    elif [[ $i == *"localhost"* ]];then
+        echo -e "\e[1;33m  |  Received: From: Source without URL --> $i\033[0m"
+        MARKS=$((MARKS+1))
+        echo "  - Received from localhost." >> $MARKS_LOG
     else
         # Print ip after every host if exists
         HOST_IP=$(host $i | awk 'NR==1{print $4}')
         if [ "$HOST_IP" == "$SPF_IP" ];then
-            echo -e "  |  Received: From: \e[1;34m$i\033[0m $(host $i | awk 'NR==1{print $3, $4}')"
+            if [[ $i == *"$SPF_SHORT_DOM"* ]];then
+                if [[ $i == *"$HELO"* ]];then
+                    echo -e "  |  Received: From: \e[1;31m$i\033[0m $(host $i | awk 'NR==1{print $3, $4}')"
+                    MARKS=$((MARKS+1))
+                    echo "  - Received from domain not in HELO." >> $MARKS_LOG
+                else
+                    echo -e "  |  Received: From: \e[1;34m$i\033[0m $(host $i | awk 'NR==1{print $3, $4}')"
+                fi                
+            else
+                echo -e "  |  Received: From: \e[1;31m$i\033[0m $(host $i | awk 'NR==1{print $3, $4}')"
+                MARKS=$((MARKS+1))
+                echo "  - Received from not same domain as SPF." >> $MARKS_LOG
+            fi
             echo "  |              By: $(cat $PARSED | awk '/Received: from '$i'/ {print $6}')"
         else
             echo "  |  Received: From: $i $(host $i | awk 'NR==1{print $3, $4}')"
@@ -178,6 +204,24 @@ for i in $(cat $PARSED | awk '/Received: from/ {print $3}' | sed 's/\[//g' | sed
 done
 echo "  |-(Sender)"
 
+#echo ""
+#for link in $(cat $1 | grep -o '[^ ]*http:[^ ]*' | cut -d ":" -f2);do
+#    echo "http:$link"
+#done
+#for link in $(cat $1 | grep -o '[^ ]*https:[^ ]*' | cut -d ":" -f2);do
+#    echo "https:$link"
+#done
+
+echo -e "\n[Verdict]"
+if [ $MARKS -lt 2 ];then
+    echo -e "\e[1;34m  Number of suspect features: $MARKS/$AVAIL_MARKS\033[0m"
+elif [ $MARKS -lt 4 ];then
+    echo -e "\e[1;33m  Number of suspect features: $MARKS/$AVAIL_MARKS\033[0m"
+else
+    echo -e "\e[1;31m  Number of suspect features: $MARKS/$AVAIL_MARKS\033[0m"
+fi
+cat $MARKS_LOG
+
 echo ""
 read -e -p "Save parsed file to path (return to skip): " DEST
 if [ ! -z $DEST ];then
@@ -189,8 +233,14 @@ if [ ! -z $DEST ];then
     fi
 fi
 
-read -p "Scan for and view base64 encodings [y/n]?: " BASE
-if [ "$BASE" == "Y" ] || [ "$BASE" == "y" ];then
-    view_base64 $1
+decode_base64 $1
+if [ -s $ASCII ];then
+    read -p "View base64 encodings [y/n]?: " BASE
+    if [ "$BASE" == "Y" ] || [ "$BASE" == "y" ];then
+        nano $ASCII
+    fi
+else
+    echo "No embedded base64 encodings."
 fi
-rm $OUT $PARSED $BASE64 $ASCII
+
+rm $OUT $PARSED $BASE64 $ASCII $MARKS_LOG
