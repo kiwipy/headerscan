@@ -6,7 +6,7 @@
 # Website:     https://github.com/william-andersson
 # License:     GPL
 #
-VERSION=0.7.0
+VERSION=0.8.0
 
 if [ -z "$1" ];then
     echo "No input file provided!"
@@ -19,7 +19,10 @@ BASE64="$(mktemp /tmp/base64.XXX)"
 ASCII="$(mktemp /tmp/ascii.XXX)"
 MARKS_LOG="$(mktemp /tmp/marks.XXX)"
 MARKS=0
-AVAIL_MARKS=7
+AVAIL_MARKS=0
+for match in $(cat /usr/local/bin/headerscan | awk '/MARKS=\$\(\(MARKS\+1\)\)/' );do
+    AVAIL_MARKS=$((AVAIL_MARKS+1))
+done
 
 decode_base64(){
     for line in $(cat $1 | sed -n '/Content-Transfer-Encoding: base64/,$p');do
@@ -112,6 +115,14 @@ echo "  $(cat $PARSED | awk '/^Subject: /')"
 echo -e "\n[Other info]"
 echo "  $(cat $PARSED | awk '/^MIME-Version: /')"
 echo "  $(cat $PARSED | awk '/^Return-Path: / {print $1, $2}')"
+REPLY="$(cat $PARSED | awk '/^Reply-To: /')"
+if [ ! -z "$REPLY" ];then
+    echo "  $REPLY"
+    if [[ $(cat $PARSED | awk '/^From: /') != *"$(echo $REPLY | awk '{print $NF}')"* ]];then
+        MARKS=$((MARKS+1))
+        echo "  - REPLY address not same as FROM." >> $MARKS_LOG
+    fi
+fi
 echo "  $(cat $PARSED | awk '/^Message-ID: /')"
 
 # Print Authentication-Results
@@ -159,7 +170,7 @@ echo -e "\n[Received-SPF]"
 SPF_DOM=$(cat $PARSED | awk '/^Received-SPF: / {print $6}')
 SPF_IP=$(cat $PARSED | awk '/^Received-SPF: / {print $8}')
 SPF_SHORT_DOM="$(echo $SPF_DOM | rev | cut -d "." -f-2 | rev)"
-echo -e "  Received-SPF: \e[1;34m$SPF_DOM\033[0m ($SPF_IP)"
+echo -e "  Received-SPF: \e[1;34m$SPF_DOM\033[0m $SPF_IP"
 
 # Print all Received: fields
 echo -e "\n[Email path through network]"
@@ -181,20 +192,20 @@ for i in $(cat $PARSED | awk '/Received: from/ {print $3}' | sed 's/\[//g' | sed
         if [ "$HOST_IP" == "$SPF_IP" ];then
             if [[ $i == *"$SPF_SHORT_DOM"* ]];then
                 if [[ $i == *"$HELO"* ]];then
-                    echo -e "  |  Received: From: \e[1;31m$i\033[0m $(host $i | awk 'NR==1{print $3, $4}')"
+                    echo -e "  |  Received: From: \e[1;31m$i\033[0m $HOST_IP"
                     MARKS=$((MARKS+1))
                     echo "  - Received from domain not in HELO." >> $MARKS_LOG
                 else
-                    echo -e "  |  Received: From: \e[1;34m$i\033[0m $(host $i | awk 'NR==1{print $3, $4}')"
+                    echo -e "  |  Received: From: \e[1;34m$i\033[0m $HOST_IP"
                 fi                
             else
-                echo -e "  |  Received: From: \e[1;31m$i\033[0m $(host $i | awk 'NR==1{print $3, $4}')"
+                echo -e "  |  Received: From: \e[1;31m$i\033[0m $HOST_IP"
                 MARKS=$((MARKS+1))
                 echo "  - Received from not same domain as SPF." >> $MARKS_LOG
             fi
             echo "  |              By: $(cat $PARSED | awk '/Received: from '$i'/ {print $6}')"
         else
-            echo "  |  Received: From: $i $(host $i | awk 'NR==1{print $3, $4}')"
+            echo "  |  Received: From: $i $HOST_IP"
             echo "  |              By: $(cat $PARSED | awk '/Received: from '$i'/ {print $6}')"
         fi
         if [ "$HOST_IP" != "found:" ];then
@@ -204,18 +215,10 @@ for i in $(cat $PARSED | awk '/Received: from/ {print $3}' | sed 's/\[//g' | sed
 done
 echo "  |-(Sender)"
 
-#echo ""
-#for link in $(cat $1 | grep -o '[^ ]*http:[^ ]*' | cut -d ":" -f2);do
-#    echo "http:$link"
-#done
-#for link in $(cat $1 | grep -o '[^ ]*https:[^ ]*' | cut -d ":" -f2);do
-#    echo "https:$link"
-#done
-
 echo -e "\n[Verdict]"
 if [ $MARKS -lt 2 ];then
     echo -e "\e[1;34m  Number of suspect features: $MARKS/$AVAIL_MARKS\033[0m"
-elif [ $MARKS -lt 4 ];then
+elif [ $MARKS -lt $(($AVAIL_MARKS/2)) ];then
     echo -e "\e[1;33m  Number of suspect features: $MARKS/$AVAIL_MARKS\033[0m"
 else
     echo -e "\e[1;31m  Number of suspect features: $MARKS/$AVAIL_MARKS\033[0m"
