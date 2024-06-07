@@ -7,4 +7,5 @@ Install with **`sudo ./install.sh`**<br>
 Run **`headerscan /path/to/header-file`**
 
 ## Notes
-This is a "quick and dirty" script so far. I plan to re-write it in python as soon as I'm happy with it.
+This is a "quick and dirty" script, bugs and unintended behaviour expected.<br>
+Stable version will be written in python.
