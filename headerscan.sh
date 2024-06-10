@@ -6,7 +6,7 @@
 # Website:     https://github.com/william-andersson
 # License:     GPL
 #
-VERSION=0.8.0
+VERSION=0.9.0
 
 if [ -z "$1" ];then
     echo "No input file provided!"
@@ -127,9 +127,9 @@ echo "  $(cat $PARSED | awk '/^Message-ID: /')"
 
 # Print Authentication-Results
 echo -e "\n[Authentication]"
-SPF="$(cat $PARSED | grep -o '[^ ]*spf=[^ ]*' | cut -d "=" -f2)"
-DKIM="$(cat $PARSED | grep -o '[^ ]*dkim=[^ ]*' | cut -d "=" -f2)"
-DMARC="$(cat $PARSED | grep -o '[^ ]*dmarc=[^ ]*' | cut -d ";" -f2 | cut -d "=" -f2)"
+SPF="$(cat $PARSED | awk '/^Authentication-Results: /' | grep -o '[^ ]*spf=[^ ]*' | cut -d "=" -f2)"
+DKIM="$(cat $PARSED | awk '/^Authentication-Results: /' | grep -o '[^ ]*dkim=[^ ]*' | cut -d "=" -f2)"
+DMARC="$(cat $PARSED | awk '/^Authentication-Results: /' | grep -o '[^ ]*dmarc=[^ ]*' | cut -d ";" -f2 | cut -d "=" -f2)"
 if [ "$SPF" != "pass" ];then
     echo -e "  SPF: \e[1;31m$SPF\033[0m"
     MARKS=$((MARKS+1))
