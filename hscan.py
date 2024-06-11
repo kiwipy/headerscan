@@ -47,55 +47,58 @@ def parse_file():
     parsed_stat = "null"
     base64_stat = "null"
     global base64
-    with open(input_file, 'r') as subject:
-        parsed_file.write("----- Parse file for HeaderScan v{} -----".format(VERSION))
+    with open(input_file, "r") as subject:
+        parsed_file.write(f"----- Parse file for HeaderScan v{VERSION} -----")
         for line in subject:
             if parsed_stat != "EOF":
                 # Parse input file
                 for word in line.split():
-                    if word.endswith(':') and word[0].isupper():
-                        parsed_file.write("\n\n{} ".format(word))
+                    if word.endswith(":") and word[0].isupper():
+                        parsed_file.write(f"\n\n{word} ")
                     else:
                         if parsed_stat == "done":
-                            parsed_file.write("{}\n".format(word))
-                            parsed_file.write("----- Email content below, not included in parse file -----\n")
+                            parsed_file.write(f"{word}\n")
+                            parsed_file.write(f"----- Email content below, " \
+                                              f"not included in parse file " \
+                                              f"-----\n")
                             parsed_file.close()
                             parsed_stat = "EOF"
                         else:
-                            parsed_file.write("{} ".format(word))
+                            parsed_file.write(f"{word} ")
                     if word == "MIME-Version:":
                         parsed_stat = "done"
             else:
                 # Parse and decode base64 encodings
-                if line.startswith('Content-Transfer-Encoding: base64'):
+                if line.startswith("Content-Transfer-Encoding: base64"):
                     base64 = "yes"
                     base64_stat = "write"
-                elif line.startswith('--'):
+                elif line.startswith("--"):
                     base64_stat = "skip"
-                if base64_stat == "write" and not line.startswith('Content-Transfer-Encoding: base64'):
-                    base64_file.write("{}".format(line))
+                if base64_stat == "write" and not \
+                    line.startswith("Content-Transfer-Encoding: base64"):
+                    base64_file.write(f"{line}")
                 else:
                     pass
     base64_file.close()
     if base64 == "yes":
-        os.system('base64 -w0 -d /tmp/hscan/base64 > /tmp/hscan/text64')
+        os.system("base64 -w0 -d /tmp/hscan/base64 > /tmp/hscan/text64")
     
     
 def collect_data():
     # Collect data from parsed file.
     global GENERAL, OTHER, FROM_ADDR, REPLY_ADDR, SPF, \
            DKIM, DMARC, HELO, SPF_DOMAIN, SPF_IP, RECEIVED
-    with open("/tmp/hscan/parsed", 'r') as subject:
+    with open("/tmp/hscan/parsed", "r") as subject:
         for line in subject:
             words = line.split()
             if len(words) > 0 and words[0] != "-----":
                 if words[0] in ["Date:", "From:", "To:", "Subject:"]:
-                    GENERAL.append(line)
+                    GENERAL.append(line.rstrip("\n"))
                     if words[0] == "From:":
                         FROM_ADDR = words[-1].strip("<").rstrip(">")
                 elif words[0] in ["MIME-Version:", "Return-Path:", 
                                   "Reply-To:", "Message-ID:"]:
-                    OTHER.append(line)
+                    OTHER.append(line.rstrip("\n"))
                     if words[0] == "Reply-To:":
                         REPLY_ADDR = words[-1].strip("<").rstrip(">")
                 elif words[0] == "Authentication-Results:":
@@ -107,8 +110,8 @@ def collect_data():
                         elif "dmarc=" in word:
                             DMARC = word.split("=")[-1]
                 elif words[0] == "Received-SPF:":
-                    SPF_TMP = words[5].split('.')[-2:]
-                    SPF_DOMAIN = "%s.%s" % (SPF_TMP[0], SPF_TMP[1])
+                    SPF_TMP = words[5].split(".")[-2:]
+                    SPF_DOMAIN = (f"{SPF_TMP[0]}.{SPF_TMP[1]}")
                     SPF_IP = words[7]
                     for word in words:
                         if "helo=" in word:
@@ -122,9 +125,9 @@ def collect_data():
 
 def get_ip_info(IP, COLOR):
     # Parse and print info for IP address
-    os.system('curl -s https://ipinfo.io/%s > /tmp/hscan/ipinfo' % IP)
+    os.system(f"curl -s https://ipinfo.io/{IP} > /tmp/hscan/ipinfo")
     OUTPUT = {}
-    with open('/tmp/hscan/ipinfo', 'r') as subject:
+    with open("/tmp/hscan/ipinfo", "r") as subject:
         for line in subject:
             if ":" in line:
                 for words in line.split(",  "):
@@ -134,19 +137,23 @@ def get_ip_info(IP, COLOR):
                     OUTPUT[KEY] = VAL
     if "bogon" in OUTPUT:
         if OUTPUT['bogon'] == 'true':
-            print(f"  |                  {ORANGE_BOLD}IP: Bogon address reserved for special use.{END}")
+            print(f"  |                  {ORANGE_BOLD}IP: " \
+                  f"Bogon address reserved for special use.{END}")
     else:
         for key, value in OUTPUT.items():
             if COLOR == "red":
                 if key in ["ip", "city", "country", "org", "timezone"]:
                     if key == "org":
-                        print(f"  |                  {RED}{key} = {value.partition(' ')[2]}{END}")
+                        print(f"  |                  " \
+                              f"{RED}{key} = {value.partition(' ')[2]}{END}")
                     else:
-                        print(f"  |                  {RED}{key} = {value}{END}")
+                        print(f"  |                  " \
+                              f"{RED}{key} = {value}{END}")
             else:
                 if key in ["city", "country", "org", "timezone"]:
                     if key == "org":
-                        print(f"  |                  {key} = {value.partition(' ')[2]}")
+                        print(f"  |                  " \
+                              f"{key} = {value.partition(' ')[2]}")
                     else:
                         print(f"  |                  {key} = {value}")
         
@@ -157,10 +164,10 @@ def print_summery():
     VERDICT = []
     print("[General info]")
     for item in GENERAL:
-        print("  %s" % item, end="")
+        print(f"  {item}")
     print("\n[Other info]")
     for item in OTHER:
-        print("  %s" % item, end="")
+        print(f"  {item}")
 
     print("\n[Authentication]")
     if SPF != "pass":
@@ -202,8 +209,9 @@ def print_summery():
             IFIP = id[2].strip("[").rstrip("]")
             if re.match(r'^(\d{1,3}\.){3}\d{1,3}$', IFIP):
                 # If domain name is IP address.
-                print(f"  |  {RED_BOLD}{id[0]} {id[1]}: Source without URL --> {IFIP}{END}")
-                get_ip_info(IFIP, 'red')
+                print(f"  |  {RED_BOLD}{id[0]} {id[1]}: " \
+                      f"Source without URL --> {IFIP}{END}")
+                get_ip_info(IFIP, "red")
                 VERDICT.append("  - Received from without domain name.")
                 MARKS += 1
             elif re.match(r'^(\d{1,3}\.){3}\d{1,3}$', IP):
@@ -211,20 +219,26 @@ def print_summery():
                 if IP == SPF_IP:
                     if SPF_DOMAIN in id[2]:
                         if id[2] not in HELO:
-                            VERDICT.append("  - Received from domain not in HELO.")
-                            print(f"  |  {id[0]} {id[1]}: {RED_BOLD}{id[2]}{END} {id[3]}")
+                            VERDICT.append("  - Received from domain " \
+                                           "not in HELO.")
+                            print(f"  |  {id[0]} {id[1]}: " \
+                                  f"{RED_BOLD}{id[2]}{END} {id[3]}")
                             MARKS += 1
                         else:
-                            print(f"  |  {id[0]} {id[1]}: {BLUE_BOLD}{id[2]}{END} {id[3]}")
+                            print(f"  |  {id[0]} {id[1]}: " \
+                                  f"{BLUE_BOLD}{id[2]}{END} {id[3]}")
                     else:
-                        VERDICT.append("  - Received from not same domain as SPF.")
-                        print(f"  |  {id[0]} {id[1]}: {RED_BOLD}{id[2]}{END} {id[3]}")
+                        VERDICT.append("  - Received from not same " \
+                                       "domain as SPF.")
+                        print(f"  |  {id[0]} {id[1]}: " \
+                              f"{RED_BOLD}{id[2]}{END} {id[3]}")
                         MARKS += 1
                 print(f"  |              {id[4]}: {id[5]}")
-                get_ip_info(IP, 'none')
+                get_ip_info(IP, "none")
             elif "localhost" in id[2]:
                 # If domain name = localhost
-                print(f"  |  {ORANGE_BOLD}{id[0]} {id[1]}: Source without URL --> {id[2]}{END}")
+                print(f"  |  {ORANGE_BOLD}{id[0]} {id[1]}: " \
+                      f"Source without URL --> {id[2]}{END}")
                 VERDICT.append("  - Received from localhost.")
                 MARKS += 1
             else:
@@ -239,11 +253,14 @@ def print_summery():
     
     print("\n[Verdict]")
     if MARKS < 2:
-        print(f"  {BLUE_BOLD}Number of suspect features: {MARKS}/{TOT_MARKS}{END}")
+        print(f"  {BLUE_BOLD}Number of suspect features: " \
+              f"{MARKS}/{TOT_MARKS}{END}")
     elif MARKS < int(TOT_MARKS/2):
-        print(f"  {ORANGE_BOLD}Number of suspect features: {MARKS}/{TOT_MARKS}{END}")
+        print(f"  {ORANGE_BOLD}Number of suspect features: " \
+              f"{MARKS}/{TOT_MARKS}{END}")
     else:
-        print(f"  {RED_BOLD}Number of suspect features: {MARKS}/{TOT_MARKS}{END}")
+        print(f"  {RED_BOLD}Number of suspect features: " \
+              f"{MARKS}/{TOT_MARKS}{END}")
     for note in VERDICT:
         print(note)
 
@@ -256,6 +273,6 @@ print("\n")
 if base64 == "yes":
     view_base64 = input("View base64 encodings [y/n]?: ")
     if view_base64 == "y":
-        os.system('nano /tmp/hscan/text64')
+        os.system("nano /tmp/hscan/text64")
 else:
     print("No embedded base64 encodings.")
