@@ -4,6 +4,5 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 echo "*** Uninstalling HeaderScan from system ***"
-rm -v /usr/local/bin/headerscan
-rm -rv /usr/local/share/headerscan
+rm -v /usr/local/bin/hscan
 echo "Done."
