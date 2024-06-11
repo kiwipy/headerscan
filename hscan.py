@@ -6,7 +6,7 @@
 # Website:     https://github.com/william-andersson
 # License:     GPL
 #
-VERSION="1.0.0"
+VERSION="1.0.1"
 import sys
 import os
 import re
@@ -97,7 +97,7 @@ def collect_data():
                                   "Reply-To:", "Message-ID:"]:
                     OTHER.append(line)
                     if words[0] == "Reply-To:":
-                        REPLY_ADDR = words[-1]
+                        REPLY_ADDR = words[-1].strip("<").rstrip(">")
                 elif words[0] == "Authentication-Results:":
                     for word in words:
                         if "spf=" in word:
