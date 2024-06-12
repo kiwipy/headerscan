@@ -6,12 +6,16 @@
 # Website:     https://github.com/william-andersson
 # License:     GPL
 #
-VERSION="1.0.1"
+VERSION="1.0.2"
 import sys
 import os
 import re
 import shutil
 import string
+
+if sys.version_info < (3, 6):
+    print("Requires python 3.6 or higher.")
+    sys.exit(1)
 
 base64 = "no"
 MARKS = 0
