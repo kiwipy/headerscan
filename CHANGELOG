@@ -1,3 +1,7 @@
 VERSION 1.0.1
 +  Fixed
     - REPLY address not same as FROM. even if it is.
+
+VERSION 1.0.2
++  Fixed
+    - Check if python version is 3.6 or higher.
