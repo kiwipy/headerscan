@@ -274,7 +274,12 @@ def print_summery():
               f"{marks}/{TOT_MARKS}{END}")
     for note in verdict:
         print(note)
-
+    print("\n  ********************************************************\n" \
+          "  * THIS APPLICATION IS ONLY A TOOL FOR DISPLAYING EMAIL *\n" \
+          "  * HEADER INFORMATION IN AN EASY TO READ FORMAT.        *\n" \
+          "  * ULTIMATELY IT'S THE USER THAT HAS TO DECIDE WHETHER  *\n" \
+          "  * THE EMAIL IS AUTHENTIC AND OR SAFE OR NOT.           *\n" \
+          "  ********************************************************")
   
 parse_file()
 collect_data()
