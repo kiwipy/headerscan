@@ -6,7 +6,7 @@
 # Website:     https://github.com/william-andersson
 # License:     GPL
 #
-VERSION="1.0.2"
+VERSION="1.0.3"
 import sys
 import os
 import re
@@ -117,7 +117,7 @@ def collect_data():
                             dkim = word.split("=")[-1]
                         elif "dmarc=" in word:
                             dmarc = word.split("=")[-1]
-                elif words[0] == "Received-SPF:":
+                elif words[0] == "Received-SPF:" and "spf_tmp" not in locals():
                     spf_tmp = words[5].split(".")[-2:]
                     spf_domain = (f"{spf_tmp[0]}.{spf_tmp[1]}")
                     spf_ip = words[7]
